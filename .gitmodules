@@ -1,0 +1,3 @@
+[submodule "MTR_with_poses"]
+	path = MTR_with_poses
+	url = git@github.com:ers1804/MTR_with_poses.git
