@@ -23,13 +23,52 @@ _GLOBAL_SEED = 0
 logger = getLogger()
 
 
-def make_waymo_jepa():
+def make_waymo_jepa(cfg, batch_size, num_workers, pin_mem=True, dist=False, training=True, scenario_id=None, merge_all_iters_to_one_epoch=False, total_epochs=0):
     dataset = WaymoJEPADataset(
         dataset_cfg=cfg.DATA_CONFIG,
-        training=True,
+        training=training,
         logger=logger,
-        scenario_id=None
+        scenario_id=scenario_id
     )
+    # Subset stuff is handled by scenario_id in dataset class
+    # if subset_file is not None:
+    #     dataset = WaymoJEPADatasetSubset(dataset, subset_file)
+    logger.info('WaymoJEPADataset created')
+
+    if merge_all_iters_to_one_epoch:
+        assert hasattr(dataset, 'merge_all_iters_to_one_epoch')
+        dataset.merge_all_iters_to_one_epoch(merge=True, epochs=total_epochs)
+
+    if dist:
+        if training:
+            dist_sampler = torch.utils.data.distributed.DistributedSampler(
+                dataset=dataset,
+                num_replicas=cfg.NUM_GPUS,
+                rank=cfg.RANK
+            )
+        else:
+            dist_sampler = torch.utils.data.distributed.DistributedSampler(
+                dataset=dataset,
+                num_replicas=cfg.NUM_GPUS,
+                rank=cfg.RANK,
+                shuffle=False
+            )
+    else:
+        dist_sampler = None
+    drop_last = cfg.DATA_CONFIG.get('DATALOADER_DROP_LAST', False) and training
+    data_loader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        pin_memory=pin_mem,
+        drop_last=drop_last,
+        sampler=dist_sampler,
+        collate_fn=dataset.collate_batch,
+        num_workers=num_workers,
+        persistent_workers=False
+    )
+
+    logger.info('WaymoJEPADataset unsupervised data loader created')
+
     return dataset, data_loader, dist_sampler
 
 
